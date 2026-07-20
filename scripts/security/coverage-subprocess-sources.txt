@@ -26,3 +26,8 @@ packages/eliza-hub/services/merge-steward/src/cli.js
 
 # ACP stdio entrypoint is exercised via spawned runtime contract tests; importing it in-process starts the protocol server.
 packages/examples/code/src/acp.ts
+
+# The mobile build CLI orchestrates destructive native build phases in a child process.
+# Its focused contract test spawns the exact entrypoint and fails at a deterministic
+# renderer-provenance guard before any platform files are changed.
+packages/app-core/scripts/run-mobile-build.mjs
