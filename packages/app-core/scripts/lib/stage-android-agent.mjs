@@ -381,14 +381,57 @@ function removePathRecursiveSync(targetPath) {
   });
 }
 
-async function downloadFile(url, targetPath) {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status} fetching ${url}`);
+function isRetryableHttpStatus(status) {
+  return (
+    status === 408 ||
+    status === 409 ||
+    status === 425 ||
+    status === 429 ||
+    status >= 500
+  );
+}
+
+async function wait(ms) {
+  if (ms <= 0) return;
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function downloadFile(
+  url,
+  targetPath,
+  { attempts = 4, retryDelayMs = 1000 } = {},
+) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        const error = new Error(`HTTP ${response.status} fetching ${url}`);
+        if (!isRetryableHttpStatus(response.status) || attempt === attempts) {
+          lastError = error;
+          break;
+        }
+        lastError = error;
+      } else {
+        const buf = Buffer.from(await response.arrayBuffer());
+        fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+        fs.writeFileSync(targetPath, buf);
+        return;
+      }
+    } catch (error) {
+      lastError = error;
+      if (attempt === attempts) {
+        break;
+      }
+    }
+    await wait(retryDelayMs * attempt);
   }
-  const buf = Buffer.from(await response.arrayBuffer());
-  fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-  fs.writeFileSync(targetPath, buf);
+  throw new Error(
+    `Failed to download ${url} after ${attempts} attempts: ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`,
+    { cause: lastError },
+  );
 }
 
 function normalizeSha256(value, envName) {
@@ -1561,4 +1604,5 @@ export const __testables = {
   riscv64BunSha256,
   resolveZigToolchain,
   provenancePath,
+  downloadFile,
 };
