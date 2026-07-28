@@ -96,10 +96,10 @@ import { ViewErrorBoundary } from "./components/views/ViewErrorBoundary";
 import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
 import { useBootConfig } from "./config/boot-config-react.hooks";
 import {
-  CONNECT_EVENT,
   dispatchNavigateViewEvent,
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
+  listenForConnectRequests,
   NAVIGATE_VIEW_EVENT,
 } from "./events";
 import { adoptRemoteAgentFirstRun } from "./first-run/adopt-remote-first-run";
@@ -2093,6 +2093,7 @@ function AppContent() {
     tab,
     setTab,
     setState,
+    completeFirstRun,
     setActionNotice,
     actionNotice,
     activeOverlayApp,
@@ -2111,6 +2112,7 @@ function AppContent() {
     tab: s.tab,
     setTab: s.setTab,
     setState: s.setState,
+    completeFirstRun: s.completeFirstRun,
     setActionNotice: s.setActionNotice,
     actionNotice: s.actionNotice,
     activeOverlayApp: s.activeOverlayApp,
@@ -2157,22 +2159,13 @@ function AppContent() {
   useEffect(() => {
     if (!isShellPaintableNow) return;
 
-    const handleConnect = async (event: Event): Promise<void> => {
-      const detail = (event as CustomEvent<unknown>).detail;
-      const payload =
-        detail && typeof detail === "object" && !Array.isArray(detail)
-          ? (detail as {
-              gatewayUrl?: unknown;
-              token?: unknown;
-              completeFirstRun?: unknown;
-              skipConfirm?: unknown;
-            })
-          : null;
-      if (typeof payload?.gatewayUrl !== "string") {
-        return;
-      }
-
-      const completeFirstRun = payload.completeFirstRun === true;
+    const handleConnect = async (payload: {
+      gatewayUrl: string;
+      token?: string;
+      completeFirstRun?: boolean;
+      skipConfirm?: boolean;
+    }): Promise<void> => {
+      const shouldCompleteFirstRun = payload.completeFirstRun === true;
       const skipConfirm = payload.skipConfirm === true;
       if (!skipConfirm && !isLoopbackGatewayHost(payload.gatewayUrl)) {
         const approved = await confirmDesktopAction({
@@ -2202,14 +2195,13 @@ function AppContent() {
         setState("firstRunRemoteToken", connection.token ?? "");
         setState("firstRunRemoteConnected", true);
         setState("firstRunRemoteError", null);
-        if (completeFirstRun) {
+        if (shouldCompleteFirstRun) {
           await adoptRemoteAgentFirstRun(client, {
             apiBase: connection.apiBase,
             token: connection.token,
             uiLanguage,
           });
-          setState("firstRunComplete", true);
-          startupCoordinator.dispatch({ type: "FIRST_RUN_COMPLETE" });
+          completeFirstRun();
         }
         setActionNotice("Connected to remote backend.", "success", 4200);
         retryStartup();
@@ -2224,14 +2216,13 @@ function AppContent() {
       }
     };
 
-    document.addEventListener(CONNECT_EVENT, handleConnect);
-    return () => document.removeEventListener(CONNECT_EVENT, handleConnect);
+    return listenForConnectRequests(handleConnect);
   }, [
+    completeFirstRun,
     isShellPaintableNow,
     retryStartup,
     setActionNotice,
     setState,
-    startupCoordinator.dispatch,
     uiLanguage,
   ]);
 

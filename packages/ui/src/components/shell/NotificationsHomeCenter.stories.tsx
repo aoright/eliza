@@ -45,7 +45,7 @@ function Seeded({
   }, [notifications]);
   if (!ready) return null;
   return (
-    <div className="max-w-md">
+    <div className="flex h-[480px] w-full max-w-md flex-col">
       <NotificationsHomeCenter />
     </div>
   );
